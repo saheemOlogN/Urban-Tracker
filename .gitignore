@@ -1,0 +1,30 @@
+# Root-level gitignore
+
+# Dependencies
+node_modules/
+
+# Environment files (keep .env.example / .env.production.example)
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
