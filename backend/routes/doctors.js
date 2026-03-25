@@ -14,6 +14,11 @@ router.get('/', authenticate, async (req, res) => {
     if (req.query.area) filter.area = req.query.area;
     if (req.query.status) filter.status = req.query.status;
 
+    // hospital_admin can only see doctors in their hospital
+    if (req.user.role === 'hospital_admin') {
+      filter.hospital = req.user.hospitalId;
+    }
+
     const doctors = await Doctor.find(filter)
       .populate('hospital', 'name area contact')
       .sort({ rating: -1, name: 1 });
@@ -38,18 +43,15 @@ router.get('/:id/slots', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Doctor not found.' });
     }
 
-    // Determine day of week
     const requestedDate = new Date(date);
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const dayName = days[requestedDate.getDay()];
 
-    // Find schedule for this day
     const daySchedule = doctor.availableSlots.filter(s => s.day === dayName);
     if (daySchedule.length === 0) {
       return res.json({ doctor: doctor.name, date, day: dayName, slots: [], message: 'Doctor is not available on this day.' });
     }
 
-    // Generate all possible time slots
     const allSlots = [];
     for (const schedule of daySchedule) {
       const [startH, startM] = schedule.startTime.split(':').map(Number);
@@ -64,7 +66,6 @@ router.get('/:id/slots', authenticate, async (req, res) => {
       }
     }
 
-    // Find already booked slots on this date
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
@@ -96,13 +97,28 @@ router.get('/:id/slots', authenticate, async (req, res) => {
   }
 });
 
-// Create a new doctor (supervisor only)
-router.post('/', authenticate, authorize('supervisor'), async (req, res) => {
+// Create a new doctor (supervisor OR hospital_admin for their own hospital)
+router.post('/', authenticate, async (req, res) => {
   try {
+    const { role, hospitalId } = req.user;
+
+    if (role !== 'supervisor' && role !== 'hospital_admin') {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
     const { name, specialization, qualification, experience, hospital, area, availableSlots, slotDuration } = req.body;
 
-    if (!name || !specialization || !qualification || !experience || !hospital || !area) {
+    if (!name || !specialization || !qualification || !experience || !area) {
       return res.status(400).json({ message: 'All fields are required.' });
+    }
+
+    // hospital_admin must assign the doctor to their own hospital
+    let doctorHospital = hospital;
+    if (role === 'hospital_admin') {
+      if (!hospitalId) return res.status(403).json({ message: 'No hospital linked to your account.' });
+      doctorHospital = hospitalId;
+    } else if (!hospital) {
+      return res.status(400).json({ message: 'Hospital field is required.' });
     }
 
     const doctor = new Doctor({
@@ -110,7 +126,7 @@ router.post('/', authenticate, authorize('supervisor'), async (req, res) => {
       specialization,
       qualification,
       experience,
-      hospital,
+      hospital: doctorHospital,
       area,
       availableSlots: availableSlots || [],
       slotDuration: slotDuration || 30,
@@ -126,20 +142,53 @@ router.post('/', authenticate, authorize('supervisor'), async (req, res) => {
   }
 });
 
-// Update doctor (supervisor only)
-router.patch('/:id', authenticate, authorize('supervisor'), async (req, res) => {
+// Update doctor (supervisor OR hospital_admin for their own hospital's doctors)
+router.patch('/:id', authenticate, async (req, res) => {
   try {
-    const doctor = await Doctor.findByIdAndUpdate(req.params.id, req.body, { new: true })
-      .populate('hospital', 'name area contact');
+    const { role, hospitalId } = req.user;
 
-    if (!doctor) {
-      return res.status(404).json({ message: 'Doctor not found.' });
+    if (role !== 'supervisor' && role !== 'hospital_admin') {
+      return res.status(403).json({ message: 'Access denied.' });
     }
 
-    res.json({ message: 'Doctor updated successfully.', doctor });
+    const doc = await Doctor.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Doctor not found.' });
+
+    if (role === 'hospital_admin' && doc.hospital.toString() !== hospitalId?.toString()) {
+      return res.status(403).json({ message: 'You can only update doctors in your own hospital.' });
+    }
+
+    const updated = await Doctor.findByIdAndUpdate(req.params.id, req.body, { new: true })
+      .populate('hospital', 'name area contact');
+
+    res.json({ message: 'Doctor updated successfully.', doctor: updated });
   } catch (err) {
     console.error('Update doctor error:', err);
     res.status(500).json({ message: 'Server error while updating doctor.' });
+  }
+});
+
+// Delete doctor (supervisor OR hospital_admin for their own hospital)
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const { role, hospitalId } = req.user;
+
+    if (role !== 'supervisor' && role !== 'hospital_admin') {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const doc = await Doctor.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Doctor not found.' });
+
+    if (role === 'hospital_admin' && doc.hospital.toString() !== hospitalId?.toString()) {
+      return res.status(403).json({ message: 'You can only delete doctors in your own hospital.' });
+    }
+
+    await Doctor.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Doctor removed successfully.' });
+  } catch (err) {
+    console.error('Delete doctor error:', err);
+    res.status(500).json({ message: 'Server error while deleting doctor.' });
   }
 });
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const Complaint = require('../models/Complaint');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 const { authenticate, authorize } = require('../middleware/auth');
 const { sendResolutionEmail } = require('../utils/email');
 
@@ -41,26 +42,8 @@ router.post('/', authenticate, authorize('citizen'), async (req, res) => {
       return res.status(400).json({ message: 'All fields are required.' });
     }
 
-    // Find a worker in the same area (least loaded first)
-    const areaWorkers = await User.find({ role: 'worker', area: location.area });
     let assignedTo = null;
     let status = 'pending';
-
-    if (areaWorkers.length > 0) {
-      // Assign to the worker with fewest active complaints in this area
-      const workerLoads = await Promise.all(
-        areaWorkers.map(async (w) => {
-          const count = await Complaint.countDocuments({
-            assignedTo: w._id,
-            status: { $in: ['assigned', 'in-progress'] },
-          });
-          return { worker: w, count };
-        })
-      );
-      workerLoads.sort((a, b) => a.count - b.count);
-      assignedTo = workerLoads[0].worker._id;
-      status = 'assigned';
-    }
 
     const complaint = new Complaint({
       type,
@@ -293,7 +276,21 @@ router.patch('/:id/status', authenticate, authorize('worker', 'supervisor'), asy
         role: 'citizen',
         area: complaint.location.area,
       }).select('email name');
-      sendResolutionEmail(complaint, areaResidents); // fire and forget
+      
+      // 1. Send Email (existing)
+      sendResolutionEmail(complaint, areaResidents);
+
+      // 2. Create In-App Notifications (New)
+      const notificationPromises = areaResidents.map(resident => {
+        return new Notification({
+          recipient: resident._id,
+          title: `✅ Resolved in ${complaint.location.area}`,
+          message: `The ${complaint.type} issue "${complaint.title}" has been resolved.`,
+          type: 'complaint_resolved',
+          link: '/citizen/reviews'
+        }).save();
+      });
+      await Promise.all(notificationPromises);
     }
 
     res.json({ message: 'Status updated successfully.', complaint });

@@ -2,9 +2,42 @@ const express = require('express');
 const Appointment = require('../models/Appointment');
 const Doctor = require('../models/Doctor');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 const { authenticate, authorize } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Top municipal servants — top doctors + top workers
+// NOTE: must be defined BEFORE /:id routes to avoid conflict
+router.get('/top-servants', authenticate, async (req, res) => {
+  try {
+    const topDoctors = await Doctor.find({ totalReviews: { $gt: 0 } })
+      .populate('hospital', 'name area')
+      .sort({ rating: -1, totalReviews: -1 })
+      .limit(10);
+
+    const topWorkers = await User.find({ role: 'worker', totalReviews: { $gt: 0 } })
+      .select('-password')
+      .sort({ rating: -1, totalReviews: -1 })
+      .limit(10);
+
+    const allWorkers = await User.find({ role: 'worker' })
+      .select('-password')
+      .sort({ rating: -1, totalReviews: -1 });
+
+    const allDoctors = await Doctor.find({})
+      .populate('hospital', 'name area')
+      .sort({ rating: -1, totalReviews: -1 });
+
+    res.json({
+      topDoctors: topDoctors.length > 0 ? topDoctors : allDoctors.slice(0, 10),
+      topWorkers: topWorkers.length > 0 ? topWorkers : allWorkers.slice(0, 10),
+    });
+  } catch (err) {
+    console.error('Top servants error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
 
 // Book an appointment (citizen only)
 router.post('/', authenticate, authorize('citizen'), async (req, res) => {
@@ -23,7 +56,6 @@ router.post('/', authenticate, authorize('citizen'), async (req, res) => {
       return res.status(400).json({ message: 'Doctor is currently on leave.' });
     }
 
-    // Check if slot is already booked
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
@@ -33,19 +65,18 @@ router.post('/', authenticate, authorize('citizen'), async (req, res) => {
       doctor: doctorId,
       date: { $gte: startOfDay, $lte: endOfDay },
       timeSlot,
-      status: { $ne: 'cancelled' },
+      status: { $nin: ['cancelled'] },
     });
 
     if (existing) {
       return res.status(400).json({ message: 'This time slot is already booked. Please choose another.' });
     }
 
-    // Check if patient already has an appointment at same time
     const patientConflict = await Appointment.findOne({
       patient: req.user.id,
       date: { $gte: startOfDay, $lte: endOfDay },
       timeSlot,
-      status: { $ne: 'cancelled' },
+      status: { $nin: ['cancelled'] },
     });
 
     if (patientConflict) {
@@ -58,6 +89,7 @@ router.post('/', authenticate, authorize('citizen'), async (req, res) => {
       hospital: doctor.hospital._id,
       date: startOfDay,
       timeSlot,
+      status: 'pending',
     });
 
     await appointment.save();
@@ -66,7 +98,7 @@ router.post('/', authenticate, authorize('citizen'), async (req, res) => {
     await appointment.populate('patient', 'name email');
 
     res.status(201).json({
-      message: `Appointment booked with Dr. ${doctor.name} on ${new Date(date).toLocaleDateString()} at ${timeSlot}.`,
+      message: `Appointment request sent to Dr. ${doctor.name} for ${new Date(date).toLocaleDateString()} at ${timeSlot}. Awaiting confirmation.`,
       appointment,
     });
   } catch (err) {
@@ -75,12 +107,26 @@ router.post('/', authenticate, authorize('citizen'), async (req, res) => {
   }
 });
 
-// Get appointments (citizen sees own, supervisor sees all)
+// Get appointments
+// - citizen: own appointments
+// - hospital_admin: all appointments at their hospital
+// - supervisor: all appointments
 router.get('/', authenticate, async (req, res) => {
   try {
     let query = {};
+
     if (req.user.role === 'citizen') {
       query.patient = req.user.id;
+    } else if (req.user.role === 'hospital_admin') {
+      if (!req.user.hospitalId) {
+        return res.status(403).json({ message: 'No hospital linked to your account.' });
+      }
+      query.hospital = req.user.hospitalId;
+    }
+
+    // Optional status filter
+    if (req.query.status) {
+      query.status = req.query.status;
     }
 
     const appointments = await Appointment.find(query)
@@ -96,7 +142,54 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// Cancel appointment (citizen — must be at least 2 hours before)
+// Accept appointment (hospital_admin only)
+router.patch('/:id/accept', authenticate, async (req, res) => {
+  try {
+    if (req.user.role !== 'hospital_admin') {
+      return res.status(403).json({ message: 'Only hospital admins can accept appointments.' });
+    }
+
+    const appointment = await Appointment.findById(req.params.id)
+      .populate('doctor', 'name specialization')
+      .populate('patient', 'name email')
+      .populate('hospital', 'name');
+
+    if (!appointment) {
+      return res.status(404).json({ message: 'Appointment not found.' });
+    }
+
+    if (appointment.hospital._id.toString() !== req.user.hospitalId?.toString()) {
+      return res.status(403).json({ message: 'This appointment is not for your hospital.' });
+    }
+
+    if (appointment.status !== 'pending') {
+      return res.status(400).json({ message: `Appointment is already ${appointment.status}.` });
+    }
+
+    appointment.status = 'accepted';
+    appointment.notificationMessage = `Your appointment with Dr. ${appointment.doctor.name} (${appointment.doctor.specialization}) at ${appointment.hospital.name} has been confirmed! Please arrive on time.`;
+    await appointment.save();
+
+    // Create In-App Notification
+    await new Notification({
+      recipient: appointment.patient._id,
+      title: '📅 Appointment Confirmed!',
+      message: `Your appointment with Dr. ${appointment.doctor.name} at ${appointment.hospital.name} has been accepted.`,
+      type: 'appointment_accepted',
+      link: '/citizen/appointments'
+    }).save();
+
+    res.json({
+      message: 'Appointment accepted successfully.',
+      appointment,
+    });
+  } catch (err) {
+    console.error('Accept appointment error:', err);
+    res.status(500).json({ message: 'Server error while accepting appointment.' });
+  }
+});
+
+// Cancel appointment (citizen only — at least 2 hours before)
 router.patch('/:id/cancel', authenticate, authorize('citizen'), async (req, res) => {
   try {
     const appointment = await Appointment.findById(req.params.id);
@@ -106,11 +199,10 @@ router.patch('/:id/cancel', authenticate, authorize('citizen'), async (req, res)
     if (appointment.patient.toString() !== req.user.id) {
       return res.status(403).json({ message: 'Not authorized.' });
     }
-    if (appointment.status !== 'booked') {
-      return res.status(400).json({ message: 'Only booked appointments can be cancelled.' });
+    if (!['pending', 'accepted', 'booked'].includes(appointment.status)) {
+      return res.status(400).json({ message: 'Only active appointments can be cancelled.' });
     }
 
-    // Check 2-hour minimum
     const [h, m] = appointment.timeSlot.split(':').map(Number);
     const appointmentTime = new Date(appointment.date);
     appointmentTime.setHours(h, m, 0, 0);
@@ -130,20 +222,29 @@ router.patch('/:id/cancel', authenticate, authorize('citizen'), async (req, res)
   }
 });
 
-// Mark appointment as completed (supervisor only)
-router.patch('/:id/complete', authenticate, authorize('supervisor'), async (req, res) => {
+// Mark appointment as completed (supervisor OR hospital_admin for their hospital)
+router.patch('/:id/complete', authenticate, async (req, res) => {
   try {
-    const appointment = await Appointment.findByIdAndUpdate(
-      req.params.id,
-      { status: 'completed' },
-      { new: true }
-    )
+    const { role, hospitalId } = req.user;
+
+    if (role !== 'supervisor' && role !== 'hospital_admin') {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const appointment = await Appointment.findById(req.params.id)
       .populate('doctor', 'name specialization')
       .populate('patient', 'name email');
 
     if (!appointment) {
       return res.status(404).json({ message: 'Appointment not found.' });
     }
+
+    if (role === 'hospital_admin' && appointment.hospital.toString() !== hospitalId?.toString()) {
+      return res.status(403).json({ message: 'This appointment is not for your hospital.' });
+    }
+
+    appointment.status = 'completed';
+    await appointment.save();
 
     res.json({ message: 'Appointment marked as completed.', appointment });
   } catch (err) {
@@ -152,7 +253,7 @@ router.patch('/:id/complete', authenticate, authorize('supervisor'), async (req,
   }
 });
 
-// Rate doctor after appointment (citizen only, completed appointments)
+// Rate doctor after appointment (citizen only, accepted or completed appointments)
 router.post('/:id/rate', authenticate, authorize('citizen'), async (req, res) => {
   try {
     const { rating, review } = req.body;
@@ -179,7 +280,6 @@ router.post('/:id/rate', authenticate, authorize('citizen'), async (req, res) =>
     appointment.review = review || '';
     await appointment.save();
 
-    // Update doctor average rating
     const doctorAppointments = await Appointment.find({
       doctor: appointment.doctor,
       rating: { $exists: true, $ne: null },
@@ -194,38 +294,6 @@ router.post('/:id/rate', authenticate, authorize('citizen'), async (req, res) =>
   } catch (err) {
     console.error('Rate appointment error:', err);
     res.status(500).json({ message: 'Server error while rating.' });
-  }
-});
-
-// Top municipal servants — top doctors + top workers
-router.get('/top-servants', authenticate, async (req, res) => {
-  try {
-    const topDoctors = await Doctor.find({ totalReviews: { $gt: 0 } })
-      .populate('hospital', 'name area')
-      .sort({ rating: -1, totalReviews: -1 })
-      .limit(10);
-
-    const topWorkers = await User.find({ role: 'worker', totalReviews: { $gt: 0 } })
-      .select('-password')
-      .sort({ rating: -1, totalReviews: -1 })
-      .limit(10);
-
-    // Also get all workers with ratings (even 0 reviews, for completeness)
-    const allWorkers = await User.find({ role: 'worker' })
-      .select('-password')
-      .sort({ rating: -1, totalReviews: -1 });
-
-    const allDoctors = await Doctor.find({})
-      .populate('hospital', 'name area')
-      .sort({ rating: -1, totalReviews: -1 });
-
-    res.json({
-      topDoctors: topDoctors.length > 0 ? topDoctors : allDoctors.slice(0, 10),
-      topWorkers: topWorkers.length > 0 ? topWorkers : allWorkers.slice(0, 10),
-    });
-  } catch (err) {
-    console.error('Top servants error:', err);
-    res.status(500).json({ message: 'Server error.' });
   }
 });
 

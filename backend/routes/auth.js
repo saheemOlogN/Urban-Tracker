@@ -82,7 +82,14 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role, name: user.name },
+      {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+        name: user.name,
+        hospitalId: user.hospitalId || null,
+        schoolId: user.schoolId || null,
+      },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -96,6 +103,8 @@ router.post('/login', async (req, res) => {
         email: user.email,
         role: user.role,
         area: user.area,
+        hospitalId: user.hospitalId || null,
+        schoolId: user.schoolId || null,
       },
     });
   } catch (err) {

@@ -14,6 +14,9 @@ import {
   Stethoscope,
   Trophy,
   X,
+  UserCog,
+  CalendarCheck,
+  School,
 } from 'lucide-react';
 
 const citizenLinks = [
@@ -39,6 +42,18 @@ const supervisorLinks = [
   { to: '/supervisor/hospitals', icon: Building2, label: 'Hospitals' },
   { to: '/supervisor/schools', icon: GraduationCap, label: 'Schools' },
   { to: '/supervisor/predictions', icon: Brain, label: 'ML Predictions' },
+  { to: '/citizen/top-servants', icon: Trophy, label: 'Top Servants' },
+];
+
+const hospitalAdminLinks = [
+  { to: '/hospital-admin', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/hospital-admin/doctors', icon: UserCog, label: 'Manage Doctors' },
+  { to: '/hospital-admin/appointments', icon: CalendarCheck, label: 'Appointments' },
+  { to: '/hospital-admin/hospital', icon: Building2, label: 'My Hospital' },
+];
+
+const schoolAdminLinks = [
+  { to: '/school-admin', icon: LayoutDashboard, label: 'Dashboard' },
 ];
 
 export default function Sidebar({ isOpen, onClose }) {
@@ -50,6 +65,8 @@ export default function Sidebar({ isOpen, onClose }) {
   let links = citizenLinks;
   if (user.role === 'worker') links = workerLinks;
   if (user.role === 'supervisor') links = supervisorLinks;
+  if (user.role === 'hospital_admin') links = hospitalAdminLinks;
+  if (user.role === 'school_admin') links = schoolAdminLinks;
 
   const handleLogout = () => {
     logout();
@@ -70,9 +87,14 @@ export default function Sidebar({ isOpen, onClose }) {
       .slice(0, 2);
   };
 
+  const getRoleLabel = (role) => {
+    if (role === 'hospital_admin') return 'Hospital Admin';
+    if (role === 'school_admin') return 'School Admin';
+    return role;
+  };
+
   return (
     <>
-      {/* Mobile backdrop overlay */}
       {isOpen && (
         <div className="sidebar-overlay" onClick={onClose} aria-hidden="true" />
       )}
@@ -81,7 +103,6 @@ export default function Sidebar({ isOpen, onClose }) {
         <div className="sidebar-brand">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h1>Urban Tracker</h1>
-            {/* Close button — only visible on mobile */}
             <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">
               <X size={18} />
             </button>
@@ -95,7 +116,7 @@ export default function Sidebar({ isOpen, onClose }) {
             <NavLink
               key={link.to}
               to={link.to}
-              end={link.to === '/citizen' || link.to === '/worker' || link.to === '/supervisor'}
+              end={['/citizen', '/worker', '/supervisor', '/hospital-admin', '/school-admin'].includes(link.to)}
               className={({ isActive }) =>
                 `sidebar-link ${isActive ? 'active' : ''}`
               }
@@ -112,7 +133,7 @@ export default function Sidebar({ isOpen, onClose }) {
             <div className="sidebar-user-avatar">{getInitials(user.name)}</div>
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">{user.name}</div>
-              <div className="sidebar-user-role">{user.role}</div>
+              <div className="sidebar-user-role">{getRoleLabel(user.role)}</div>
             </div>
             <button className="sidebar-logout" onClick={handleLogout} title="Logout">
               <LogOut size={18} />

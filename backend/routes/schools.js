@@ -15,9 +15,37 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// Update school data (supervisor only)
-router.patch('/:id', authenticate, authorize('supervisor'), async (req, res) => {
+// Get single school
+router.get('/:id', authenticate, async (req, res) => {
   try {
+    const school = await School.findById(req.params.id);
+    if (!school) return res.status(404).json({ message: 'School not found.' });
+
+    if (req.user.role === 'school_admin' &&
+        req.user.schoolId?.toString() !== req.params.id) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    res.json(school);
+  } catch (err) {
+    console.error('Get school error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Update school data (supervisor OR school_admin for their own school)
+router.patch('/:id', authenticate, async (req, res) => {
+  try {
+    const { role, schoolId } = req.user;
+
+    if (role === 'school_admin') {
+      if (!schoolId || schoolId.toString() !== req.params.id) {
+        return res.status(403).json({ message: 'You can only update your own school.' });
+      }
+    } else if (role !== 'supervisor') {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
     const updates = req.body;
     const school = await School.findByIdAndUpdate(req.params.id, updates, { new: true });
 

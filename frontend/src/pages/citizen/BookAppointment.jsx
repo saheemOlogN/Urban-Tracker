@@ -437,74 +437,99 @@ export default function BookAppointment() {
             </div>
           ) : (
             <div className="complaint-list">
-              {appointments.map(apt => (
-                <div key={apt._id} className="complaint-item">
-                  <div className="complaint-item-header">
-                    <span className="complaint-item-title">
-                      {apt.doctor?.name || 'Doctor'}
-                    </span>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <span className={`badge badge-${apt.status === 'booked' ? 'assigned' : apt.status === 'completed' ? 'resolved' : 'warning'}`}>
-                        {apt.status}
+              {appointments.map(apt => {
+                const statusColor = {
+                  pending: 'warning',
+                  accepted: 'resolved',
+                  booked: 'assigned',
+                  completed: 'resolved',
+                  cancelled: 'inactive',
+                }[apt.status] || 'warning';
+
+                return (
+                  <div key={apt._id} className="complaint-item">
+                    <div className="complaint-item-header">
+                      <span className="complaint-item-title">{apt.doctor?.name || 'Doctor'}</span>
+                      <span className={`badge badge-${statusColor}`}>{apt.status}</span>
+                    </div>
+
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      {apt.doctor?.specialization} · {apt.doctor?.qualification}
+                    </div>
+
+                    {/* Accepted notification banner */}
+                    {apt.status === 'accepted' && apt.notificationMessage && (
+                      <div style={{
+                        display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '10px 14px',
+                        marginBottom: '10px', borderRadius: '8px', fontSize: '12px',
+                        background: 'linear-gradient(135deg, rgba(34,197,94,0.08), rgba(34,197,94,0.03))',
+                        border: '1px solid rgba(34,197,94,0.2)', color: 'var(--success)',
+                      }}>
+                        <CheckCircle2 size={14} style={{ flexShrink: 0, marginTop: '1px' }} />
+                        {apt.notificationMessage}
+                      </div>
+                    )}
+
+                    {/* Still pending notice */}
+                    {apt.status === 'pending' && (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px',
+                        marginBottom: '10px', borderRadius: '8px', fontSize: '12px',
+                        background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)',
+                        color: '#d97706',
+                      }}>
+                        <Clock size={13} /> Awaiting confirmation from the hospital. You will be notified once accepted.
+                      </div>
+                    )}
+
+                    <div className="complaint-item-meta">
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Calendar size={12} /> {formatDate(apt.date)}
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Clock size={12} /> {apt.timeSlot}
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Building2 size={12} /> {apt.hospital?.name || 'Hospital'}
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <MapPin size={12} /> {apt.hospital?.area}
                       </span>
                     </div>
-                  </div>
 
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                    {apt.doctor?.specialization} · {apt.doctor?.qualification}
-                  </div>
+                    {/* Rating display */}
+                    {apt.rating && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '10px', fontSize: '12px' }}>
+                        {[1,2,3,4,5].map(s => (
+                          <Star key={s} size={13} fill={s <= apt.rating ? '#f59e0b' : 'transparent'}
+                            stroke={s <= apt.rating ? '#f59e0b' : 'var(--text-muted)'} />
+                        ))}
+                        <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>Your rating</span>
+                        {apt.review && <span style={{ color: 'var(--text-muted)', marginLeft: '8px' }}>— "{apt.review}"</span>}
+                      </div>
+                    )}
 
-                  <div className="complaint-item-meta">
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Calendar size={12} /> {formatDate(apt.date)}
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Clock size={12} /> {apt.timeSlot}
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Building2 size={12} /> {apt.hospital?.name || 'Hospital'}
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <MapPin size={12} /> {apt.hospital?.area}
-                    </span>
-                  </div>
-
-                  {/* Rating display */}
-                  {apt.rating && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '10px', fontSize: '12px' }}>
-                      {[1,2,3,4,5].map(s => (
-                        <Star key={s} size={13} fill={s <= apt.rating ? '#f59e0b' : 'transparent'}
-                          stroke={s <= apt.rating ? '#f59e0b' : 'var(--text-muted)'} />
-                      ))}
-                      <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>Your rating</span>
-                      {apt.review && (
-                        <span style={{ color: 'var(--text-muted)', marginLeft: '8px' }}>
-                          — "{apt.review}"
-                        </span>
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                      {['pending', 'accepted', 'booked'].includes(apt.status) && (
+                        <button className="btn btn-sm btn-secondary" onClick={() => handleCancel(apt._id)}
+                          style={{ fontSize: '12px' }}>
+                          <XCircle size={13} /> Cancel
+                        </button>
+                      )}
+                      {apt.status === 'completed' && !apt.rating && (
+                        <button className="btn btn-sm btn-primary" onClick={() => {
+                          setRatingAppointment(apt);
+                          setRatingValue(0);
+                          setReviewText('');
+                        }} style={{ fontSize: '12px' }}>
+                          <Star size={13} /> Rate Doctor
+                        </button>
                       )}
                     </div>
-                  )}
-
-                  {/* Actions */}
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                    {apt.status === 'booked' && (
-                      <button className="btn btn-sm btn-secondary" onClick={() => handleCancel(apt._id)}
-                        style={{ fontSize: '12px' }}>
-                        <XCircle size={13} /> Cancel
-                      </button>
-                    )}
-                    {apt.status === 'completed' && !apt.rating && (
-                      <button className="btn btn-sm btn-primary" onClick={() => {
-                        setRatingAppointment(apt);
-                        setRatingValue(0);
-                        setReviewText('');
-                      }} style={{ fontSize: '12px' }}>
-                        <Star size={13} /> Rate Doctor
-                      </button>
-                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

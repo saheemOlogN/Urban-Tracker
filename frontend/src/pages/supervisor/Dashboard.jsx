@@ -107,11 +107,18 @@ export default function SupervisorDashboard() {
             <div className="stat-card-label">Unassigned</div>
           </div>
         </div>
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/supervisor/complaints?filter=in-progress')}>
-          <div className="card-icon info"><AlertCircle size={20} /></div>
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/supervisor/complaints?filter=assigned')}>
+          <div className="card-icon info"><ClipboardList size={20} /></div>
           <div className="stat-card-content">
-            <div className="stat-card-value">{stats.assigned + stats.inProgress}</div>
-            <div className="stat-card-label">Active Tasks</div>
+            <div className="stat-card-value">{stats.assigned}</div>
+            <div className="stat-card-label">Assigned</div>
+          </div>
+        </div>
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/supervisor/complaints?filter=in-progress')}>
+          <div className="card-icon accent"><AlertCircle size={20} style={{ color: 'var(--accent)' }} /></div>
+          <div className="stat-card-content">
+            <div className="stat-card-value">{stats.inProgress}</div>
+            <div className="stat-card-label">In Progress</div>
           </div>
         </div>
         <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/supervisor/complaints?filter=resolved')}>

@@ -29,6 +29,8 @@ export default function Login() {
       if (role === 'citizen') navigate('/citizen');
       else if (role === 'worker') navigate('/worker');
       else if (role === 'supervisor') navigate('/supervisor');
+      else if (role === 'hospital_admin') navigate('/hospital-admin');
+      else if (role === 'school_admin') navigate('/school-admin');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Login failed.');
     } finally {

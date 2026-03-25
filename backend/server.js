@@ -10,6 +10,7 @@ const schoolRoutes = require('./routes/schools');
 const workerRoutes = require('./routes/workers');
 const doctorRoutes = require('./routes/doctors');
 const appointmentRoutes = require('./routes/appointments');
+const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.use('/api/schools', schoolRoutes);
 app.use('/api/workers', workerRoutes);
 app.use('/api/doctors', doctorRoutes);
 app.use('/api/appointments', appointmentRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'Urban Tracker API' });

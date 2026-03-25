@@ -19,6 +19,11 @@ import SupervisorComplaints from './pages/supervisor/Complaints';
 import SupervisorHospitals from './pages/supervisor/Hospitals';
 import SupervisorSchools from './pages/supervisor/Schools';
 import SupervisorWorkers from './pages/supervisor/Workers';
+import HospitalAdminDashboard from './pages/hospital-admin/Dashboard';
+import ManageDoctors from './pages/hospital-admin/ManageDoctors';
+import ManageAppointments from './pages/hospital-admin/ManageAppointments';
+import ManageHospital from './pages/hospital-admin/ManageHospital';
+import SchoolAdminDashboard from './pages/school-admin/Dashboard';
 
 function RoleRedirect() {
   const { user } = useAuth();
@@ -26,6 +31,8 @@ function RoleRedirect() {
   if (user.role === 'citizen') return <Navigate to="/citizen" />;
   if (user.role === 'worker') return <Navigate to="/worker" />;
   if (user.role === 'supervisor') return <Navigate to="/supervisor" />;
+  if (user.role === 'hospital_admin') return <Navigate to="/hospital-admin" />;
+  if (user.role === 'school_admin') return <Navigate to="/school-admin" />;
   return <Navigate to="/login" />;
 }
 
@@ -43,7 +50,7 @@ export default function App() {
       <Route path="/citizen/quotations" element={<ProtectedRoute allowedRoles={['citizen']}><Quotations /></ProtectedRoute>} />
       <Route path="/citizen/reviews" element={<ProtectedRoute allowedRoles={['citizen']}><ReviewComplaints /></ProtectedRoute>} />
       <Route path="/citizen/appointments" element={<ProtectedRoute allowedRoles={['citizen']}><BookAppointment /></ProtectedRoute>} />
-      <Route path="/citizen/top-servants" element={<ProtectedRoute allowedRoles={['citizen']}><TopServants /></ProtectedRoute>} />
+      <Route path="/citizen/top-servants" element={<ProtectedRoute allowedRoles={['citizen', 'supervisor']}><TopServants /></ProtectedRoute>} />
 
       {/* Worker Routes */}
       <Route path="/worker" element={<ProtectedRoute allowedRoles={['worker']}><WorkerDashboard /></ProtectedRoute>} />
@@ -56,6 +63,15 @@ export default function App() {
       <Route path="/supervisor/schools" element={<ProtectedRoute allowedRoles={['supervisor']}><SupervisorSchools /></ProtectedRoute>} />
       <Route path="/supervisor/workers" element={<ProtectedRoute allowedRoles={['supervisor']}><SupervisorWorkers /></ProtectedRoute>} />
       <Route path="/supervisor/predictions" element={<ProtectedRoute allowedRoles={['supervisor']}><Predictions /></ProtectedRoute>} />
+
+      {/* Hospital Admin Routes */}
+      <Route path="/hospital-admin" element={<ProtectedRoute allowedRoles={['hospital_admin']}><HospitalAdminDashboard /></ProtectedRoute>} />
+      <Route path="/hospital-admin/doctors" element={<ProtectedRoute allowedRoles={['hospital_admin']}><ManageDoctors /></ProtectedRoute>} />
+      <Route path="/hospital-admin/appointments" element={<ProtectedRoute allowedRoles={['hospital_admin']}><ManageAppointments /></ProtectedRoute>} />
+      <Route path="/hospital-admin/hospital" element={<ProtectedRoute allowedRoles={['hospital_admin']}><ManageHospital /></ProtectedRoute>} />
+
+      {/* School Admin Routes */}
+      <Route path="/school-admin" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminDashboard /></ProtectedRoute>} />
 
       <Route path="/" element={<RoleRedirect />} />
       <Route path="*" element={<Navigate to="/" />} />
